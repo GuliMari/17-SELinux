@@ -56,6 +56,10 @@ allow this access for now by executing:
 ```bash
 [root@localhost ~]# semanage port -a -t http_port_t -p tcp 4080
 [root@localhost ~]# systemctl restart nginx
+```
+Проверим, работает ли сервис:
+
+```bash
 [root@localhost ~]# ss -ntlp | grep nginx
 LISTEN     0      128          *:4080                     *:*                   users:(("nginx",pid=2532,fd=6),("nginx",pid=2531,fd=6))
 [root@localhost ~]# curl localhost:4080
@@ -83,7 +87,42 @@ Commercial support is available at
 </body>
 </html>
 ```
-2. 
+
+2. Второй вариант решения проблемы - использовать переключатели:
+
+```bash
+[root@localhost ~]# setsebool -P nis_enabled 1
+[root@localhost ~]# systemctl restart nginx
+[root@localhost ~]# ss -ntlp | grep nginx
+LISTEN     0      128          *:5080                     *:*                   users:(("nginx",pid=21662,fd=6),("nginx",pid=21661,fd=6))
+[root@localhost ~]# curl localhost:5080
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to nginx!</title>
+<style>
+html { color-scheme: light dark; }
+body { width: 35em; margin: 0 auto;
+font-family: Tahoma, Verdana, Arial, sans-serif; }
+</style>
+</head>
+<body>
+<h1>Welcome to nginx!</h1>
+<p>If you see this page, the nginx web server is successfully installed and
+working. Further configuration is required.</p>
+
+<p>For online documentation and support please refer to
+<a href="http://nginx.org/">nginx.org</a>.<br/>
+Commercial support is available at
+<a href="http://nginx.com/">nginx.com</a>.</p>
+
+<p><em>Thank you for using nginx.</em></p>
+</body>
+</html>
+
+```
+
+3. 
 
 
 
