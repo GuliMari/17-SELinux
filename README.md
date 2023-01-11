@@ -316,7 +316,7 @@ Then execute:
 restorecon -v 'named.ddns.lab.view1.jnl'
 ...
 [root@ns01 ~]# semanage fcontext -a -t named_zone_t "/etc/named(/.*)?"
-[root@ns01 ~]# restorecon -v /etc/named
+[root@ns01 ~]# restorecon -Rv /etc/named
 [root@ns01 ~]# ls -laZ /etc/named
 drw-rwx---. root named system_u:object_r:named_zone_t:s0 .
 drwxr-xr-x. root root  system_u:object_r:etc_t:s0       ..
@@ -326,7 +326,7 @@ drw-rwx---. root named unconfined_u:object_r:named_zone_t:s0 dynamic
 -rw-rw----. root named system_u:object_r:named_zone_t:s0 named.dns.lab.view1
 -rw-rw----. root named system_u:object_r:named_zone_t:s0 named.newdns.lab
 
-
+Команда `semanage` записывает новый контекст в политику SELinux, из которой он применяется к файловой системе, в то время как `chcon` записывает новый контекст только в файловую систему, они временные и могут быть возвращены к изначальным. Т.е. лучше применять `semanage`, чтобы внесенные изменения не пропали из политик SELinux.
 
 
 
