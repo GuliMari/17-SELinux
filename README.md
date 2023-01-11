@@ -175,6 +175,153 @@ Commercial support is available at
 ```
 ### 2. Обеспечить работоспособность приложения при включенном selinux.
 
+Разворачиваем 2 ВМ с помощью `vagrant up` и подключаемся к ним по SSH.
+При попытке внести изменения в зону на клиенте получаем ошибку:
+
+```bash
+[vagrant@client ~]$  nsupdate -k /etc/named.zonetransfer.key
+> server 192.168.88.10
+> zone ddns.lab
+> update add www.ddns.lab. 60 A 192.168.88.15
+> send
+update failed: SERVFAIL
+> quit
+```
+
+В логах SELinux отсутвуют ошибки:
+
+```bash
+[root@client ~]# cat /var/log/audit/audit.log | audit2why
+```
+Делаем вывод, что проблема не связана с клиентом и смотрим сервер:
+
+```bash
+[root@ns01 ~]# cat /var/log/audit/audit.log | audit2why
+type=AVC msg=audit(1673453132.114:1969): avc:  denied  { create } for  pid=5327 comm="isc-worker0000" name="named.ddns.lab.view1.jnl" scontext=system_u:system_r:named_t:s0 tcontext=system_u:object_r:etc_t:s0 tclass=file permissive=0
+
+	Was caused by:
+		Missing type enforcement (TE) allow rule.
+
+		You can use audit2allow to generate a loadable module to allow this access.
+[root@ns01 ~]# sealert -a /var/log/audit/audit.log
+100% done
+found 1 alerts in /var/log/audit/audit.log
+--------------------------------------------------------------------------------
+
+SELinux is preventing /usr/sbin/named from create access on the file named.ddns.lab.view1.jnl.
+...
+```
+Мы видим, что SELinux запретил доступ на чтение и запись к файлу `named.ddns.lab.view1.jnl`, т.к. его контекст безопасности имеет неверный тип.
+
+```bash
+[root@ns01 ~]# ls -lZ /etc/named
+drw-rwx---. root named unconfined_u:object_r:etc_t:s0   dynamic
+-rw-rw----. root named system_u:object_r:etc_t:s0       named.88.168.192.rev
+-rw-rw----. root named system_u:object_r:etc_t:s0       named.dns.lab
+-rw-rw----. root named system_u:object_r:etc_t:s0       named.dns.lab.view1
+-rw-rw----. root named system_u:object_r:etc_t:s0       named.newdns.lab
+```
+Видим, что `named` не может получить доступ к файлам, имеющих тип `etc_t`. Для решения проблемы необходимо изменить тип. Чтобы понять, какой тип нам нужен, sыведем список всех контекстов, доступных для `named` и выберем нужный:
+
+```bash
+[root@ns01 ~]# semanage fcontext -l | grep named
+/etc/rndc.*                                        regular file       system_u:object_r:named_conf_t:s0 
+/var/named(/.*)?                                   all files          system_u:object_r:named_zone_t:s0 
+/etc/unbound(/.*)?                                 all files          system_u:object_r:named_conf_t:s0 
+/var/run/bind(/.*)?                                all files          system_u:object_r:named_var_run_t:s0 
+/var/log/named.*                                   regular file       system_u:object_r:named_log_t:s0 
+/var/run/named(/.*)?                               all files          system_u:object_r:named_var_run_t:s0 
+/var/named/data(/.*)?                              all files          system_u:object_r:named_cache_t:s0 
+/dev/xen/tapctrl.*                                 named pipe         system_u:object_r:xenctl_t:s0 
+/var/run/unbound(/.*)?                             all files          system_u:object_r:named_var_run_t:s0 
+/var/lib/softhsm(/.*)?                             all files          system_u:object_r:named_cache_t:s0 
+/var/lib/unbound(/.*)?                             all files          system_u:object_r:named_cache_t:s0 
+/var/named/slaves(/.*)?                            all files          system_u:object_r:named_cache_t:s0 
+/var/named/chroot(/.*)?                            all files          system_u:object_r:named_conf_t:s0 
+/etc/named\.rfc1912.zones                          regular file       system_u:object_r:named_conf_t:s0 
+/var/named/dynamic(/.*)?                           all files          system_u:object_r:named_cache_t:s0 
+/var/named/chroot/etc(/.*)?                        all files          system_u:object_r:etc_t:s0 
+/var/named/chroot/lib(/.*)?                        all files          system_u:object_r:lib_t:s0 
+...
+```
+Изменим тип контекста безопасности для каталога /etc/named: 
+
+```bash
+[root@ns01 ~]# chcon -R -t named_zone_t /etc/named
+[root@ns01 ~]# ls -lZ /etc/named
+drw-rwx---. root named unconfined_u:object_r:named_zone_t:s0 dynamic
+-rw-rw----. root named system_u:object_r:named_zone_t:s0 named.88.168.192.rev
+-rw-rw----. root named system_u:object_r:named_zone_t:s0 named.dns.lab
+-rw-rw----. root named system_u:object_r:named_zone_t:s0 named.dns.lab.view1
+-rw-rw----. root named system_u:object_r:named_zone_t:s0 named.newdns.lab
+
+```
+Теперь попробуем внести изменения на клиенте:
+
+```bash
+[vagrant@client ~]$  nsupdate -k /etc/named.zonetransfer.key
+> server 192.168.88.10
+> zone ddns.lab
+> update add www.ddns.lab. 60 A 192.168.88.15
+> send
+> quit
+[vagrant@client ~]$ dig www.ddns.lab
+
+; <<>> DiG 9.11.4-P2-RedHat-9.11.4-26.P2.el7_9.10 <<>> @192.168.88.10 www.ddns.lab
+; (1 server found)
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 46179
+;; flags: qr aa rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 1, ADDITIONAL: 2
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 4096
+;; QUESTION SECTION:
+;www.ddns.lab.			IN	A
+
+;; ANSWER SECTION:
+www.ddns.lab.		60	IN	A	192.168.88.15
+
+;; AUTHORITY SECTION:
+ddns.lab.		3600	IN	NS	ns01.dns.lab.
+
+;; ADDITIONAL SECTION:
+ns01.dns.lab.		3600	IN	A	192.168.88.10
+
+;; Query time: 1 msec
+;; SERVER: 192.168.88.10#53(192.168.88.10)
+;; WHEN: Wed Jan 11 16:24:46 UTC 2023
+;; MSG SIZE  rcvd: 96
+
+```
+
+Второй более быстрый вариант решения проблемы - это воспользоваться подсказкой `sealert`:
+
+```bash
+[root@ns01 ~]# sealert -a /var/log/audit/audit.log
+100% done
+found 1 alerts in /var/log/audit/audit.log
+--------------------------------------------------------------------------------
+
+SELinux is preventing /usr/sbin/named from create access on the file named.ddns.lab.view1.jnl.
+
+*****  Plugin catchall_labels (83.8 confidence) suggests   *******************
+
+If you want to allow named to have create access on the named.ddns.lab.view1.jnl file
+Then you need to change the label on named.ddns.lab.view1.jnl
+Do
+# semanage fcontext -a -t FILE_TYPE 'named.ddns.lab.view1.jnl'
+where FILE_TYPE is one of the following: dnssec_trigger_var_run_t, ipa_var_lib_t, krb5_host_rcache_t, krb5_keytab_t, named_cache_t, named_log_t, named_tmp_t, named_var_run_t, named_zone_t.
+Then execute:
+restorecon -v 'named.ddns.lab.view1.jnl'
+...
+[root@ns01 ~]# semanage fcontext -a -t named_zone_t 'named.ddns.lab.view1.jnl'
+[root@ns01 ~]# restorecon -v /etc/named/dynamic/named.ddns.lab.view1
+
+
+
+
+
 
 
 
