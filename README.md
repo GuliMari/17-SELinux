@@ -221,7 +221,7 @@ drw-rwx---. root named unconfined_u:object_r:etc_t:s0   dynamic
 -rw-rw----. root named system_u:object_r:etc_t:s0       named.dns.lab.view1
 -rw-rw----. root named system_u:object_r:etc_t:s0       named.newdns.lab
 ```
-Видим, что `named` не может получить доступ к файлам, имеющих тип `etc_t`. Для решения проблемы необходимо изменить тип. Чтобы понять, какой тип нам нужен, sыведем список всех контекстов, доступных для `named` и выберем нужный:
+Видим, что `named` не может получить доступ к файлам, имеющих тип `etc_t`. Для решения проблемы необходимо изменить тип. Чтобы понять, какой тип нам нужен, выведем список всех контекстов, доступных для `named` и выберем нужный:
 
 ```bash
 [root@ns01 ~]# semanage fcontext -l | grep named
@@ -295,7 +295,7 @@ ns01.dns.lab.		3600	IN	A	192.168.88.10
 
 ```
 
-Второй более быстрый вариант решения проблемы - это воспользоваться подсказкой `sealert`:
+Второй вариант решения проблемы - это воспользоваться подсказкой `sealert`:
 
 ```bash
 [root@ns01 ~]# sealert -a /var/log/audit/audit.log
@@ -315,8 +315,17 @@ where FILE_TYPE is one of the following: dnssec_trigger_var_run_t, ipa_var_lib_t
 Then execute:
 restorecon -v 'named.ddns.lab.view1.jnl'
 ...
-[root@ns01 ~]# semanage fcontext -a -t named_zone_t 'named.ddns.lab.view1.jnl'
-[root@ns01 ~]# restorecon -v /etc/named/dynamic/named.ddns.lab.view1
+[root@ns01 ~]# semanage fcontext -a -t named_zone_t "/etc/named(/.*)?"
+[root@ns01 ~]# restorecon -v /etc/named
+[root@ns01 ~]# ls -laZ /etc/named
+drw-rwx---. root named system_u:object_r:named_zone_t:s0 .
+drwxr-xr-x. root root  system_u:object_r:etc_t:s0       ..
+drw-rwx---. root named unconfined_u:object_r:named_zone_t:s0 dynamic
+-rw-rw----. root named system_u:object_r:named_zone_t:s0 named.88.168.192.rev
+-rw-rw----. root named system_u:object_r:named_zone_t:s0 named.dns.lab
+-rw-rw----. root named system_u:object_r:named_zone_t:s0 named.dns.lab.view1
+-rw-rw----. root named system_u:object_r:named_zone_t:s0 named.newdns.lab
+
 
 
 
