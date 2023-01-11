@@ -325,6 +325,7 @@ drw-rwx---. root named unconfined_u:object_r:named_zone_t:s0 dynamic
 -rw-rw----. root named system_u:object_r:named_zone_t:s0 named.dns.lab
 -rw-rw----. root named system_u:object_r:named_zone_t:s0 named.dns.lab.view1
 -rw-rw----. root named system_u:object_r:named_zone_t:s0 named.newdns.lab
+```
 
 Команда `semanage` записывает новый контекст в политику SELinux, из которой он применяется к файловой системе, в то время как `chcon` записывает новый контекст только в файловую систему, они временные и могут быть возвращены к изначальным. Т.е. лучше применять `semanage`, чтобы внесенные изменения не пропали из политик SELinux.
 
